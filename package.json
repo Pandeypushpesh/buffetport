@@ -12,8 +12,10 @@
   "keywords": ["portfolio", "react", "express", "vercel"],
   "author": "",
   "license": "MIT",
+  "dependencies": {
+    "nodemailer": "^6.9.7"
+  },
   "devDependencies": {
     "concurrently": "^8.2.2"
   }
 }
-

@@ -2,25 +2,21 @@
   "version": 2,
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
-  "framework": "vite",
-  "installCommand": "cd frontend && npm install && cd ../backend && npm install",
-  "routes": [
+  "installCommand": "npm install",
+  "framework": null,
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
     },
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ],
   "functions": {
     "api/**/*.js": {
       "runtime": "nodejs18.x"
     }
-  },
-  "env": {
-    "NODE_ENV": "production"
   }
 }
-
