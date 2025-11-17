@@ -1,0 +1,17 @@
+<!-- 
+  Example: Add these scripts to your index.html <head> section
+  Replace placeholders with your actual IDs/domains
+-->
+
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-XXXXXXXXXX');
+</script>
+
+<!-- Plausible Analytics -->
+<script defer data-domain="yourdomain.com" src="https://plausible.io/js/script.js"></script>
+
