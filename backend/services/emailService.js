@@ -49,16 +49,24 @@ const createTransporter = () => {
  * @throws {Error} If file doesn't exist
  */
 const getResumePath = () => {
-  const resumePath = path.join(__dirname, '..', 'assets', 'resume.pdf');
-  
-  if (!fs.existsSync(resumePath)) {
-    throw new Error(
-      `Resume file not found at: ${resumePath}. ` +
-      'Please ensure resume.pdf exists in backend/assets/ directory.'
-    );
+  // Try multiple possible paths for resume file (Vercel-compatible)
+  const possiblePaths = [
+    path.join(__dirname, '..', 'assets', 'resume.pdf'), // Local development
+    path.join(process.cwd(), 'assets', 'resume.pdf'), // Vercel serverless
+    path.join('/tmp', 'resume.pdf'), // Alternative serverless path
+  ];
+
+  for (const resumePath of possiblePaths) {
+    if (fs.existsSync(resumePath)) {
+      return resumePath;
+    }
   }
 
-  return resumePath;
+  // If resume not found, throw error with helpful message
+  throw new Error(
+    `Resume file not found. Tried paths: ${possiblePaths.join(', ')}. ` +
+    'Please ensure resume.pdf exists in backend/assets/ directory or upload to cloud storage.'
+  );
 };
 
 /**

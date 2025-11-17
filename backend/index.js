@@ -9,7 +9,7 @@ dotenv.config();
 const app = express();
 
 // CORS Configuration
-// In production, set FRONTEND_URL environment variable to your frontend domain
+// Automatically detects frontend in production via FRONTEND_URL environment variable
 const corsOptions = {
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true,
