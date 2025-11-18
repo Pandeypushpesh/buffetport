@@ -315,7 +315,7 @@ export default async function handler(req, res) {
     }
 
     return res.status(500).json({
-      error: 'Internal server error',
+      error: 'Internal  error',
       message: 'Failed to send resume. Please try again later.'
     });
   }
