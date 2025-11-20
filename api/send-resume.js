@@ -3,28 +3,38 @@
  * POST /api/send-resume
  */
 
-import nodemailer from 'nodemailer';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import nodemailer from "nodemailer";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// --- CONFIGURATION CONSTANTS ---
+const SENDER_NAME_DEFAULT = "Portfolio Owner";
+const EMAIL_SUBJECT_DEFAULT = "Your Requested Resume";
+const RESUME_FILENAME = "resume.pdf";
+const FRONTEND_URL_PRODUCTION = "https://portpushpesh.netlify.app"; // <--- **YOUR FRONTEND URL ADDED**
 
 // Get current directory for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Email service function (inline to avoid import issues)
+// --- HELPER FUNCTIONS ---
+
+/**
+ * Creates and returns the Nodemailer transporter.
+ */
 const createTransporter = () => {
-  const requiredVars = ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'FROM_EMAIL'];
-  const missingVars = requiredVars.filter(varName => !process.env[varName]);
-  
+  const requiredVars = ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "FROM_EMAIL"];
+  const missingVars = requiredVars.filter((varName) => !process.env[varName]);
+
   if (missingVars.length > 0) {
     throw new Error(
-      `Missing required environment variables: ${missingVars.join(', ')}. ` +
-      'Please check your environment variables in Vercel dashboard.'
+      `Missing required environment variables: ${missingVars.join(", ")}. ` +
+        "Please check your SMTP configuration."
     );
   }
 
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const port = parseInt(process.env.SMTP_PORT || "587", 10);
   const secure = port === 465;
 
   return nodemailer.createTransport({
@@ -35,92 +45,94 @@ const createTransporter = () => {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    // Allows self-signed certs in dev, restricts in prod (unless overridden by env var)
     tls: {
-      rejectUnauthorized: process.env.NODE_ENV === 'production',
+      rejectUnauthorized: process.env.NODE_ENV === "production",
     },
   });
 };
 
-const getResumePath = () => {
-  // Try multiple possible paths for resume file
+/**
+ * Locates the resume file path or uses a CDN URL if provided.
+ */
+const getResumeAttachment = () => {
+  // 1. Check for a CDN/Public URL (Recommended for Serverless)
+  if (process.env.RESUME_PUBLIC_URL) {
+    console.log("Using RESUME_PUBLIC_URL for attachment.");
+    return {
+      filename: RESUME_FILENAME,
+      path: process.env.RESUME_PUBLIC_URL, // Path here means URL for external files
+      contentType: "application/pdf",
+    };
+  }
+
+  // 2. Fallback to Local/Serverless File Path (Less reliable in serverless)
   const possiblePaths = [
-    path.join(__dirname, '..', 'backend', 'assets', 'resume.pdf'),
-    path.join(process.cwd(), 'backend', 'assets', 'resume.pdf'),
-    path.join('/tmp', 'resume.pdf'), // For serverless environments
+    path.join(__dirname, "..", "backend", "assets", RESUME_FILENAME),
+    path.join(process.cwd(), "backend", "assets", RESUME_FILENAME),
+    path.join("/tmp", RESUME_FILENAME), // For serverless environments
   ];
 
   for (const resumePath of possiblePaths) {
     if (fs.existsSync(resumePath)) {
-      return resumePath;
+      console.log(`Resume file found locally at: ${resumePath}`);
+      return {
+        filename: RESUME_FILENAME,
+        path: resumePath,
+        contentType: "application/pdf",
+      };
     }
   }
 
-  // If resume not found, throw error
+  // 3. Throw a clear error if neither is found
   throw new Error(
-    'Resume file not found. Please ensure resume.pdf exists in backend/assets/ ' +
-    'or upload it to cloud storage and update the email service.'
+    `Resume file not available. Please set RESUME_PUBLIC_URL in environment ` +
+      `variables or ensure ${RESUME_FILENAME} is packaged correctly.`
   );
 };
 
+/**
+ * Sends the email with the resume attachment.
+ */
 const sendResumeByEmail = async (recipientEmail) => {
   let transporter;
 
   try {
+    // Email format validation is performed in the handler, but an extra check is harmless
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(recipientEmail)) {
       throw new Error(`Invalid recipient email format: ${recipientEmail}`);
     }
 
-    console.log('Creating SMTP transporter...');
+    console.log("Creating SMTP transporter...");
     transporter = createTransporter();
 
-    console.log('Verifying SMTP connection...');
+    console.log("Verifying SMTP connection...");
     await transporter.verify();
-    console.log('SMTP connection verified successfully');
+    console.log("SMTP connection verified successfully");
 
-    console.log('Locating resume file...');
-    let resumePath;
-    try {
-      resumePath = getResumePath();
-      console.log(`Resume file found at: ${resumePath}`);
-    } catch (error) {
-      console.warn('Resume file not found locally. Consider using cloud storage.');
-      // Continue without attachment - you can modify this behavior
-      throw new Error('Resume file not available. Please configure resume storage.');
-    }
+    // Get the attachment configuration
+    const attachment = getResumeAttachment();
 
-    const senderName = process.env.SENDER_NAME || 'Portfolio Owner';
-    const emailSubject = process.env.EMAIL_SUBJECT || 'Your Requested Resume';
-    
-    const textBody = process.env.EMAIL_TEXT || 
-      `Hello,\n\n` +
-      `Thank you for your interest in my work. Please find my resume attached to this email.\n\n` +
-      `If you have any questions or would like to discuss opportunities, please don't hesitate to reach out.\n\n` +
-      `Best regards,\n${senderName}`;
+    const senderName = process.env.SENDER_NAME || SENDER_NAME_DEFAULT;
+    const emailSubject = process.env.EMAIL_SUBJECT || EMAIL_SUBJECT_DEFAULT;
 
-    const htmlBody = process.env.EMAIL_HTML || 
-      `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <p>Hello,</p>
-    <p>Thank you for your interest in my work. Please find my resume attached to this email.</p>
-    <p>If you have any questions or would like to discuss opportunities, please don't hesitate to reach out.</p>
-    <p>Best regards,<br><strong>${senderName}</strong></p>
-    <div class="footer">
-      <p>This is an automated email. Please do not reply directly to this message.</p>
-    </div>
-  </div>
-</body>
-</html>`;
+    // Use environment variables for body content if available
+    const textBody =
+      process.env.EMAIL_TEXT ||
+      `Hello,\n\nThank you for your interest. Please find my resume attached.\n\nBest regards,\n${senderName}`;
+
+    const htmlBody =
+      process.env.EMAIL_HTML ||
+      `<!DOCTYPE html><html><body><div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <p>Hello,</p>
+        <p>Thank you for your interest in my work. Please find my resume attached to this email.</p>
+        <p>If you have any questions, please don't hesitate to reach out.</p>
+        <p>Best regards,<br><strong>${senderName}</strong></p>
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee; font-size: 12px; color: #666;">
+          <p>This is an automated email.</p>
+        </div>
+      </div></body></html>`;
 
     const mailOptions = {
       from: `"${senderName}" <${process.env.FROM_EMAIL}>`,
@@ -128,48 +140,32 @@ const sendResumeByEmail = async (recipientEmail) => {
       subject: emailSubject,
       text: textBody,
       html: htmlBody,
-      attachments: [
-        {
-          filename: 'resume.pdf',
-          path: resumePath,
-          contentType: 'application/pdf',
-        },
-      ],
+      attachments: [attachment],
     };
 
     console.log(`Sending email to: ${recipientEmail}`);
     const info = await transporter.sendMail(mailOptions);
 
-    console.log('✅ Email sent successfully!');
-    console.log('   Message ID:', info.messageId);
+    console.log("✅ Email sent successfully!");
+    console.log("   Message ID:", info.messageId);
 
     return {
       success: true,
       messageId: info.messageId,
-      message: 'Resume sent successfully! Check your email.',
+      message: "Resume sent successfully! Check your email.",
       recipient: recipientEmail,
     };
-
   } catch (error) {
-    console.error('❌ Error sending email:', error.message);
-    
-    if (error.code === 'EAUTH') {
-      throw new Error('SMTP authentication failed. Please verify your SMTP credentials.');
-    }
-    
-    if (error.code === 'ECONNECTION') {
-      throw new Error('Failed to connect to SMTP server. Please check your SMTP settings.');
-    }
-
-    throw new Error(`Failed to send email: ${error.message}`);
+    console.error("❌ Error sending email:", error.message);
+    throw error; // Re-throw to be caught by the main handler
   } finally {
     if (transporter) {
-      transporter.close();
+      transporter.close(); // Ensure transporter is closed in all cases
     }
   }
 };
 
-// Simple in-memory rate limiting (for serverless)
+// --- RATE LIMITING (No changes needed, the logic is sound) ---
 const rateLimitMap = new Map();
 
 function checkRateLimit(ip) {
@@ -180,12 +176,7 @@ function checkRateLimit(ip) {
   const key = ip;
   const record = rateLimitMap.get(key);
 
-  if (!record) {
-    rateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
-    return true;
-  }
-
-  if (now > record.resetTime) {
+  if (!record || now > record.resetTime) {
     rateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
     return true;
   }
@@ -206,117 +197,120 @@ setInterval(() => {
       rateLimitMap.delete(key);
     }
   }
-}, 60 * 60 * 1000);
+}, 60 * 60 * 1000).unref(); // Use .unref() to not block event loop exit in Node.js
+
+// --- MAIN HANDLER FUNCTION ---
 
 export default async function handler(req, res) {
-  // CORS headers
+  // --- CORS Handling ---
   const origin = req.headers.origin || req.headers.referer;
+
+  // Combine your explicit frontend URL, local hosts, and an optional env variable
   const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    'http://localhost:5173',
-    'http://localhost:3000'
+    FRONTEND_URL_PRODUCTION, // Your deployed Netlify URL
+    process.env.FRONTEND_URL, // Optional environment variable (e.g., for staging/dev)
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
   ].filter(Boolean);
 
-  if (origin && (allowedOrigins.includes(origin) || process.env.FRONTEND_URL === '*')) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+  // Check if the request origin is allowed or if * (for testing) is explicitly set
+  if (
+    origin &&
+    (allowedOrigins.includes(origin) || process.env.FRONTEND_URL === "*")
+  ) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    // If origin is not explicitly allowed, do not set the header to prevent CORS from working
+    // You could also set it to a fixed, non-matching origin like 'null' if desired.
   }
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
 
   // Handle preflight
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    // Rate limiting
-    const clientIP = req.headers['x-forwarded-for']?.split(',')[0] || 
-                    req.headers['x-real-ip'] || 
-                    req.connection?.remoteAddress || 
-                    'unknown';
+    // --- Rate Limiting ---
+    const clientIP =
+      req.headers["x-forwarded-for"]?.split(",")[0] ||
+      req.headers["x-real-ip"] ||
+      req.connection?.remoteAddress ||
+      "unknown";
 
     if (!checkRateLimit(clientIP)) {
       return res.status(429).json({
-        error: 'Too many requests',
-        message: 'Rate limit exceeded. Maximum 5 requests per hour per IP.'
+        error: "Too many requests",
+        message: "Rate limit exceeded. Maximum 5 requests per hour per IP.",
       });
     }
 
-    // Validate email
+    // --- Input Validation ---
     const { email } = req.body;
-    const sanitizedEmail = email ? email.trim().toLowerCase() : '';
-
-    if (!sanitizedEmail) {
-      return res.status(400).json({
-        error: 'Email is required',
-        message: 'Please provide an email address'
-      });
-    }
-
-    // Email format validation
+    const sanitizedEmail = email ? email.trim().toLowerCase() : "";
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(sanitizedEmail)) {
+
+    if (
+      !sanitizedEmail ||
+      !emailRegex.test(sanitizedEmail) ||
+      sanitizedEmail.length > 254 ||
+      /[<>\"'%;()&+]/.test(sanitizedEmail)
+    ) {
       return res.status(400).json({
-        error: 'Invalid email format',
-        message: 'Please provide a valid email address'
+        error: "Invalid email",
+        message: "Please provide a valid email address.",
       });
     }
 
-    // Email length validation
-    if (sanitizedEmail.length > 254) {
-      return res.status(400).json({
-        error: 'Invalid email',
-        message: 'Email address is too long'
-      });
-    }
-
-    // Prevent injection patterns
-    if (/[<>\"'%;()&+]/.test(sanitizedEmail)) {
-      return res.status(400).json({
-        error: 'Invalid email format',
-        message: 'Email contains invalid characters'
-      });
-    }
-
-    // Send email
+    // --- Send Email ---
     const result = await sendResumeByEmail(sanitizedEmail);
 
     return res.status(200).json({
       success: true,
-      message: result.message || 'Resume sent successfully! Check your email.',
-      messageId: result.messageId
+      message: result.message || "Resume sent successfully! Check your email.",
+      messageId: result.messageId,
     });
-
   } catch (error) {
-    console.error('Error in /api/send-resume:', {
+    console.error("Error in /api/send-resume:", {
       error: error.message,
       code: error.code,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
-    // Handle specific error types
-    if (error.message.includes('SMTP') || error.message.includes('authentication')) {
+    // --- Error Handling ---
+    if (
+      error.message.includes("SMTP") ||
+      error.message.includes("authentication") ||
+      error.code === "EAUTH" ||
+      error.code === "ECONNECTION"
+    ) {
       return res.status(503).json({
-        error: 'Service unavailable',
-        message: 'Email service is currently unavailable. Please try again later.'
+        error: "Service unavailable",
+        message:
+          "Email service is currently unavailable due to an SMTP configuration error. Please try again later.",
       });
     }
 
-    if (error.message.includes('Resume file not')) {
+    if (error.message.includes("Resume file not available")) {
       return res.status(503).json({
-        error: 'Service unavailable',
-        message: 'Resume file not available. Please contact the site administrator.'
+        error: "Service unavailable",
+        message:
+          "Resume file not found. Please contact the site administrator.",
       });
     }
 
     return res.status(500).json({
-      error: 'Internal  error',
-      message: 'Failed to send resume. Please try again later.'
+      error: "Internal server error",
+      message: "Failed to send resume. Please try again later.",
     });
   }
 }

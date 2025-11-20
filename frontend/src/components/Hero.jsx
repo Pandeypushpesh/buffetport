@@ -8,7 +8,7 @@ function Hero() {
   const handleDownloadResume = () => {
     // Logic to initiate a direct file download
     // IMPORTANT: Ensure your resume file (e.g., 'Pushpesh_Resume.pdf') is in your public directory
-    const resumeUrl = '/assets/Pushpesh_Resume.pdf'; 
+    const resumeUrl = 'https://drive.google.com/file/d/1oj4NSUaq1NWS5US-U-aD7438ylLY0b8I/view?usp=drive_link'; 
     
     // Create a temporary link element
     const link = document.createElement('a');
